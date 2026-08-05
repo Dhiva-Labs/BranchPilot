@@ -1,0 +1,47 @@
+Source: branchpilot
+Section: vcs
+Priority: optional
+Maintainer: Dhiva Labs <dhivakar1010@gmail.com>
+Build-Depends: debhelper-compat (= 13),
+               clang,
+               cmake,
+               ninja-build,
+               pkg-config,
+               libgtk-3-dev,
+               liblzma-dev,
+               libjsoncpp-dev,
+               xz-utils,
+               git,
+               python3
+Standards-Version: 4.6.2
+Homepage: https://github.com/Dhiva-Labs/BranchPilot
+Rules-Requires-Root: no
+
+Package: branchpilot
+Architecture: amd64
+Depends: ${shlibs:Depends}, ${misc:Depends}, libgtk-3-0, git (>= 2.28)
+# git is a hard dependency rather than a Recommends: BranchPilot has no
+# bundled git and no libgit2 — every operation shells out to the system
+# binary, so without it the application cannot open a repository at all.
+# The >= 2.28 floor is `git init --initial-branch`, which the app relies on
+# and which predates every currently supported Ubuntu release.
+#
+# ssh-client is only a Suggests: HTTPS remotes with a credential helper are
+# a complete workflow on their own, and a user who never touches SSH remotes
+# should not be made to install it.
+Suggests: ssh-client
+Description: Git GUI with a visual commit graph and hunk-level staging
+ BranchPilot is a git client for the Linux desktop: a visual commit graph,
+ hunk-level staging, full branch, stash and remote operations, and a
+ drag-and-drop editor for interactive rebase.
+ .
+ It wraps the system git command-line tool directly — there is no libgit2,
+ no bundled git binary, and the application never handles or stores
+ credentials. Authentication stays exactly where it already lives: your
+ existing git credential helpers and ssh-agent.
+ .
+ Features include a commit graph with persistent lane assignment and
+ colour-coded refs, syntax-highlighted diffs with per-hunk staging, branch
+ and stash management, fetch, pull and push with live progress, interactive
+ rebase with conflict resume, and power operations such as tags,
+ cherry-pick, revert, reset, worktrees and per-file history.

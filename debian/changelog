@@ -1,0 +1,13 @@
+branchpilot (1.0.0~noble1) noble; urgency=medium
+
+  * Initial release.
+  * Visual commit graph with persistent lane assignment, colour-coded ref
+    chips and incremental loading.
+  * Syntax-highlighted diffs with file-level and hunk-level staging.
+  * Commit flow with amend support and a per-commit detail pane.
+  * Branch, stash and merge operations with in-app conflict resolution.
+  * Fetch, pull and push with streaming progress and cancellable tasks.
+  * Interactive rebase with a drag-and-drop todo editor and conflict resume.
+  * Tags, cherry-pick, revert, reset, worktrees and per-file history.
+
+ -- Dhiva Labs <dhivakar1010@gmail.com>  Wed, 05 Aug 2026 18:30:00 +0530

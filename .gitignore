@@ -45,3 +45,23 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 PLAN.md
+
+# Launchpad PPA build artifacts
+/debian/.debhelper/
+/debian/branchpilot/
+/debian/.home/
+/debian/files
+/debian/*.substvars
+/debian/*.log
+/debian/debhelper-build-stamp
+/.flutter/
+/.pub-cache/
+# Vendored Flutter SDK + pub cache for the network-isolated Launchpad
+# builders. These ship inside the 3.0 (native) source package but must not
+# bloat the git repository — see packaging/vendor/README to regenerate.
+/packaging/vendor/*.tar.xz
+# Snap build output
+/*.snap
+/parts/
+/prime/
+/stage/

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=BranchPilot
+Comment=Git client for Linux
+Exec=branchpilot
+Icon=branchpilot
+Terminal=false
+Categories=Development;RevisionControl;
+Keywords=git;version control;commit;branch;merge;rebase;diff;
+StartupWMClass=branch_pilot

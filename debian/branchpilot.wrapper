@@ -1,0 +1,6 @@
+#!/bin/sh
+# BranchPilot ships as a self-contained Flutter bundle under /opt, which is
+# where its data/ and lib/ directories must stay relative to the executable.
+# Launch it from there rather than symlinking the binary into /usr/bin,
+# which would break that relative layout.
+exec /opt/branchpilot/branch_pilot "$@"

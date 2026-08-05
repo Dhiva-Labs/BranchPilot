@@ -1,0 +1,116 @@
+#!/usr/bin/make -f
+
+# Launchpad's PPA build farm has no outbound network access, so the Flutter
+# SDK and pub cache are vendored under packaging/vendor/ and extracted into
+# build-scoped directories here. See packaging/vendor/README for how the
+# tarballs are produced.
+#
+# Nearly every workaround below was paid for by a failed Launchpad build
+# cycle on a sibling Dhiva Labs Flutter package; the comments record which
+# symptom each one prevents so they are not "cleaned up" by someone who
+# cannot reproduce the failure locally (none of them reproduce on a machine
+# that has network access and a warm pub cache).
+FLUTTER_VERSION := 3.44.6
+FLUTTER_ENGINE_VERSION := 83675ed27633283e7fc296c8bca22e841224c096
+
+FLUTTER_ROOT := $(CURDIR)/.flutter
+FLUTTER_TARBALL := $(CURDIR)/packaging/vendor/flutter-$(FLUTTER_VERSION)-linux-slim.tar.xz
+PUB_CACHE_TARBALL := $(CURDIR)/packaging/vendor/pub-cache-$(FLUTTER_VERSION).tar.xz
+
+export PATH := $(FLUTTER_ROOT)/bin:$(PATH)
+export HOME := $(CURDIR)/debian/.home
+export PUB_CACHE := $(CURDIR)/.pub-cache
+# Tell the flutter tool which engine artifacts it already has, so it doesn't
+# try to derive the version from a real git history (there isn't one — the
+# vendored SDK ships a minimal .git shim instead).
+export FLUTTER_PREBUILT_ENGINE_VERSION := $(FLUTTER_ENGINE_VERSION)
+
+%:
+	dh $@
+
+override_dh_auto_build:
+	mkdir -p $(HOME)
+	if [ ! -x "$(FLUTTER_ROOT)/bin/flutter" ]; then \
+		rm -rf $(CURDIR)/flutter $(FLUTTER_ROOT); \
+		tar --no-same-owner -xJf $(FLUTTER_TARBALL) -C $(CURDIR); \
+		mv $(CURDIR)/flutter $(FLUTTER_ROOT); \
+	fi
+	if [ ! -d "$(PUB_CACHE)/hosted" ]; then \
+		mkdir -p $(PUB_CACHE); \
+		tar --no-same-owner -xJf $(PUB_CACHE_TARBALL) -C $(PUB_CACHE); \
+	fi
+	$(FLUTTER_ROOT)/bin/flutter --disable-analytics config --no-analytics --no-cli-animations
+	# The vendored SDK ships flutter_tools/.dart_tool/package_config.json
+	# generated on the machine that produced the tarball, with absolute
+	# rootUris into that machine's scratch pub cache. flutter_tools'
+	# PubDependencies.isUpToDate walks this file and checks each rootUri
+	# contains a pubspec.yaml; on any other machine those paths do not
+	# exist, the artifact reads as stale, and the tool re-resolves its own
+	# packages online — which dies on the builders' blocked network.
+	# Point every rootUri at a distinct stub directory carrying a real
+	# pubspec.yaml (the check validates only that one exists there). The
+	# entries must be DISTINCT: the Dart VM rejects duplicate package roots.
+	python3 -c 'import json,os; \
+		p=".flutter/packages/flutter_tools/.dart_tool/package_config.json"; \
+		d=json.load(open(p)); base=os.path.dirname(p); \
+		stubs=os.path.join(base,"pubstubs"); \
+		[e.update(rootUri="pubstubs/"+e["name"]) or \
+		 os.makedirs(os.path.join(stubs,e["name"],"lib"),exist_ok=True) or \
+		 open(os.path.join(stubs,e["name"],"pubspec.yaml"),"w") \
+		   .write("name: "+e["name"]+chr(10)) \
+		 for e in d["packages"]]; \
+		json.dump(d,open(p,"w"),indent=2)'
+	# dpkg-source preserves mtimes, so a version bump can leave
+	# pubspec.yaml newer than pubspec.lock and trigger a "lockfile stale"
+	# re-resolution — i.e. a network call.
+	touch pubspec.lock
+	# Strip `resolution: workspace` from BOTH the vendored pub cache and the
+	# vendored SDK's own package pubspecs. Several transitive dependencies
+	# declare it, and it makes pub treat those packages' dev_dependencies as
+	# monorepo members to be fetched — they are not vendored, so pub goes to
+	# the network. The sed MUST NOT advance any pubspec.yaml's mtime: the
+	# flutter wrapper rebuilds its own tool via an online `pub upgrade` when
+	# flutter_tools/pubspec.yaml is newer than its lockfile. touch -r
+	# against a stamp file restores the original mtime after editing.
+	find $(PUB_CACHE) $(FLUTTER_ROOT)/packages -name pubspec.yaml \
+		-exec sh -c 'for f; do \
+			touch -r "$$f" "$$f.mtime-stamp"; \
+			sed -i "/^resolution: workspace/d" "$$f"; \
+			touch -r "$$f.mtime-stamp" "$$f"; \
+			rm -f "$$f.mtime-stamp"; \
+		done' - {} +
+	# `flutter pub get --offline`, not `dart pub get`: the dart CLI does not
+	# set up FLUTTER_ROOT the way the flutter wrapper does and cannot resolve
+	# the flutter_test dev dependency, which comes from `sdk: flutter`
+	# rather than pub.dev.
+	$(FLUTTER_ROOT)/bin/flutter pub get --offline
+	$(FLUTTER_ROOT)/bin/flutter build linux --release --no-pub
+
+override_dh_auto_test:
+	# The Dart test suite needs a Flutter engine and, for the integration
+	# tests, a display. It runs in CI, not at package build time.
+
+override_dh_dwz:
+	# The Flutter Linux shared libraries and the AOT-compiled application
+	# binary don't ship .debug_info in the form dwz expects, so dh_dwz fails
+	# outright. Skip DWARF compression for this package.
+
+override_dh_strip:
+	# libflutter_linux_gtk.so and the engine artifacts ship the exact
+	# binaries Flutter tested against — stripping them here would produce a
+	# different .so than every other Flutter Linux installation and defeat
+	# symbol-based crash reporting. Skip strip.
+
+override_dh_auto_install:
+	mkdir -p debian/branchpilot/opt/branchpilot
+	cp -a build/linux/x64/release/bundle/. debian/branchpilot/opt/branchpilot/
+	mkdir -p debian/branchpilot/usr/bin
+	install -m 0755 debian/branchpilot.wrapper debian/branchpilot/usr/bin/branchpilot
+	mkdir -p debian/branchpilot/usr/share/applications
+	install -m 0644 packaging/branchpilot.desktop debian/branchpilot/usr/share/applications/branchpilot.desktop
+	mkdir -p debian/branchpilot/usr/share/icons/hicolor/256x256/apps
+	install -m 0644 assets/icon/branchpilot_256.png debian/branchpilot/usr/share/icons/hicolor/256x256/apps/branchpilot.png
+
+override_dh_auto_clean:
+	dh_auto_clean
+	rm -rf .flutter .pub-cache build .dart_tool debian/.home
