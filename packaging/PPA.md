@@ -71,9 +71,30 @@ the first use, but in a non-interactive shell with no pinentry available the
 signing step fails with `clear-sign failed: Timeout` — run it from a terminal
 where a passphrase prompt can appear.
 
-`dput` reporting "Successfully uploaded packages" only means the files
-reached the server; acceptance is asynchronous. Confirm it actually landed
-rather than trusting that message:
+### Two silent failures to guard against
+
+Both of these report success and upload nothing. Neither prints a warning.
+
+**1. `dput` skips packages it thinks it already sent.** After a successful
+transfer it writes a receipt beside the package —
+`branchpilot_<version>_source.dhiva-apps.upload`. On any later `dput` of the
+same version it sees that file and does nothing at all. So if a first upload
+was rejected by Launchpad (wrong key, bad signature) and you fix and re-sign,
+a plain `dput` is a no-op and the corrected package never leaves the machine.
+Always force a re-upload after a rejection:
+
+```bash
+rm -f ../branchpilot_*_source.dhiva-apps.upload
+dput -f dhiva-apps ../branchpilot_1.0.0~noble1_source.changes
+```
+
+**2. Launchpad discards uploads signed by an unregistered key** (see above).
+`dput` still says "Successfully uploaded packages" — that only describes the
+FTP transfer, not acceptance.
+
+### Confirm it actually landed
+
+Never trust the upload message. Check the archive: 
 
 ```bash
 curl -s "https://api.launchpad.net/1.0/~dhiva-labs/+archive/ubuntu/apps?ws.op=getPublishedSources&source_name=branchpilot" \
