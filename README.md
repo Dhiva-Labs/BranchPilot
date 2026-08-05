@@ -90,7 +90,33 @@ flutter build linux --release
 
 The built app is at `build/linux/x64/release/bundle/branch_pilot`.
 
-## Installing the `.deb` (Linux)
+## Installing
+
+### Snap
+
+```sh
+sudo snap install branchpilot
+```
+
+The snap is strictly confined, which has two consequences worth knowing
+before you hit them:
+
+```sh
+sudo snap connect branchpilot:ssh-keys   # required for SSH remotes
+```
+
+A confined application cannot read hidden files at the top of your home
+directory, so your `~/.gitconfig` is not visible to it. Set your identity
+per repository (`git config user.name` / `user.email`) — the commit box
+writes repository-local configuration, so committing from the app works
+without any global setup. Repositories themselves are fully accessible;
+only top-level dotfiles are not.
+
+If you want the app to use your global git configuration, credential
+helpers and `ssh-agent` exactly as your shell does, install the `.deb`
+below instead — it is unconfined.
+
+### `.deb` (Debian/Ubuntu)
 
 ```sh
 sudo dpkg -i branchpilot_1.0.0_amd64.deb
