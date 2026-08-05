@@ -1,31 +1,11 @@
 # Snap Store packaging for BranchPilot.
 #
-# See packaging/SNAP.md for the build and publish procedure.
+# Modelled on the SecureShell Go snap in this house: `plugin: flutter` +
+# the `gnome` extension under strict confinement, which passes automated
+# store review and can be released to a channel immediately.
 #
-# WHY CLASSIC CONFINEMENT
-# =======================
-# BranchPilot deliberately owns no credentials: it shells out to the system
-# `git` and lets git's own credential helpers and ssh-agent do the
-# authenticating. Under *strict* confinement that design cannot work:
-#
-#   * The `home` interface grants access to non-hidden files only. A repo's
-#     nested `.git/` is reachable (its parent path is non-hidden), but the
-#     top-level `~/.gitconfig` is not — so git inside the snap would see no
-#     user.name/user.email and every commit would fail, and no
-#     credential.helper configuration would be visible either.
-#   * `~/.ssh` is likewise a top-level hidden directory. The `ssh-keys`
-#     interface can grant it, but it is not auto-connected.
-#   * The ssh-agent socket under /run/user/<uid> is not exposed by any
-#     interface, so agent-based push/pull would fail even with ssh-keys
-#     connected.
-#   * The user's actual git binary — and any credential helper it invokes,
-#     which may live anywhere on PATH — is outside the snap's mount
-#     namespace.
-#
-# Classic confinement is the established fit for developer tooling of this
-# shape (the VS Code and JetBrains snaps use it for the same reasons). It
-# requires manual review by the Snap Store team; packaging/SNAP.md contains
-# the rationale to paste into that request.
+# See packaging/SNAP.md for the build and publish procedure, and for what
+# strict confinement costs this particular application.
 name: branchpilot
 title: BranchPilot
 base: core22
@@ -36,21 +16,29 @@ description: |
   hunk-level staging, full branch, stash and remote operations, and a
   drag-and-drop editor for interactive rebase.
 
-  It wraps the system git command-line tool directly — there is no libgit2,
-  no bundled git binary, and the app never handles or stores credentials.
-  Authentication stays exactly where it already lives: your existing git
-  credential helpers and ssh-agent.
+  It wraps the git command-line tool directly — there is no libgit2 and the
+  application never handles or stores credentials.
 
   Features include a commit graph with persistent lane assignment and
-  colour-coded refs, syntax-highlighted diffs with per-hunk staging,
-  branch and stash management, fetch/pull/push with live progress,
-  interactive rebase with conflict resume, and power operations such as
-  tags, cherry-pick, revert, reset, worktrees and per-file history.
+  colour-coded refs, syntax-highlighted diffs with per-hunk staging, branch
+  and stash management, fetch, pull and push with live progress, interactive
+  rebase with conflict resume, and power operations such as tags,
+  cherry-pick, revert, reset, worktrees and per-file history.
+
+  Note on confinement: as a strictly confined snap this build reads your SSH
+  keys through the ssh-keys interface, which must be connected once after
+  install:
+
+    sudo snap connect branchpilot:ssh-keys
+
+  Your top-level ~/.gitconfig is not visible to a confined snap, so set your
+  identity per repository (git config user.name / user.email) or use the
+  commit box, which writes repository-local configuration.
 
   A Dhiva Labs project.
 
 grade: stable
-confinement: classic
+confinement: strict
 icon: snap/gui/branchpilot.png
 license: MIT
 website: https://github.com/Dhiva-Labs/BranchPilot
@@ -63,16 +51,34 @@ architectures:
 
 apps:
   branchpilot:
-    command: bin/branch_pilot
+    command: branch_pilot
+    # The `gnome` extension is the core22 replacement for separate
+    # desktop/gtk plumbing: it supplies the GTK3/GLib/Wayland/X11 platform
+    # via a content snap, the `desktop-launch` command-chain wrapper, and
+    # font/theme/icon handling. It also injects the desktop, desktop-legacy,
+    # gsettings, opengl, wayland and x11 plugs automatically; the ones
+    # repeated below are for readability — snapcraft de-duplicates them.
+    extensions:
+      - gnome
     desktop: usr/share/applications/branchpilot.desktop
-    environment:
-      # Classic snaps are not given the GTK/GDK plumbing an extension would
-      # wire up under strict confinement, so point the toolkit at the
-      # libraries and data staged into this snap.
-      GDK_BACKEND: ${GDK_BACKEND:-}
-      GSETTINGS_SCHEMA_DIR: $SNAP/usr/share/glib-2.0/schemas
-      GDK_PIXBUF_MODULE_FILE: $SNAP/usr/lib/x86_64-linux-gnu/gdk-pixbuf-2.0/2.10.0/loaders.cache
-      XDG_DATA_DIRS: $SNAP/usr/share:$XDG_DATA_DIRS
+    plugs:
+      - home
+      - removable-media
+      - network
+      - network-bind
+      - desktop
+      - desktop-legacy
+      - wayland
+      - x11
+      - unity7
+      - gsettings
+      # Repositories are reached through `home`, which covers a nested
+      # .git/ directory because its parent path is not hidden. The user's
+      # top-level ~/.ssh is hidden and needs this interface instead; it is
+      # not auto-connected, so `snap connect branchpilot:ssh-keys` is
+      # required once for SSH remotes (documented in the description and
+      # the README).
+      - ssh-keys
 
 parts:
   branchpilot:
@@ -82,21 +88,14 @@ parts:
     # `source: .` copies the working tree verbatim. A build/ directory left
     # by a host-side `flutter build linux` carries a CMakeCache.txt naming
     # host paths, and CMake refuses to reuse a cache generated elsewhere —
-    # the build dies before compiling anything. All of this is regenerated
-    # inside the build environment.
+    # the build dies before compiling anything.
     override-pull: |
       craftctl default
-      rm -rf build .dart_tool .flutter .pub-cache dist \
+      rm -rf build .dart_tool .flutter .pub-cache dist parts prime stage \
         linux/flutter/ephemeral
-    # Classic snaps run against their own bundled libraries, which means the
-    # ELF interpreter and RPATH of every shipped binary must be rewritten to
-    # point inside $SNAP. Without this the app fails to start on any host
-    # whose loader path differs.
-    build-attributes:
-      - enable-patchelf
     # The `flutter` plugin fetches the SDK but does not pull in the GTK
-    # toolchain the Linux desktop target compiles against — without these the
-    # build dies at "Could NOT find PkgConfig" during CMake configure.
+    # toolchain the Linux desktop target compiles against — without these
+    # the build fails at "Could NOT find PkgConfig" during CMake configure.
     build-packages:
       - clang
       - cmake
@@ -111,11 +110,17 @@ parts:
       - git
     stage-packages:
       - libgtk-3-0
-      - libglib2.0-0
-      - libgdk-pixbuf-2.0-0
-      - librsvg2-common
-    organize:
-      branch_pilot: bin/branch_pilot
+      # BranchPilot shells out to git for every operation and bundles no git
+      # logic of its own. A confined snap cannot execute the host's binary,
+      # so git ships inside the snap; GitCli falls back from /usr/bin/git to
+      # the first `git` on PATH, which resolves to this one.
+      - git
+      # git's own helpers: ssh for SSH remotes, ca-certificates so HTTPS
+      # remotes verify, and less because git invokes a pager by default
+      # (BranchPilot passes --no-pager, but git's own error paths do not).
+      - openssh-client
+      - ca-certificates
+      - less
 
   desktop-assets:
     # Reuse the same launcher entry and icon the Debian package installs

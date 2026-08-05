@@ -43,19 +43,42 @@ If it fails, the Launchpad build would have failed the same way.
 
 ## Sign and upload
 
-The signing key must match the `debian/changelog` maintainer address, or
-Launchpad rejects the upload. Both are `dhivakar1010@gmail.com`.
+**Use key `3D8D857AAF4D50E6` (rsa4096, short id `AF4D50E6`).** This machine
+holds two secret keys for `dhivakar1010@gmail.com`, but only the rsa4096 one
+is registered on the `~dhivakar1010` Launchpad account:
+
+```console
+$ curl -s https://api.launchpad.net/1.0/~dhivakar1010/gpg_keys | grep keyid
+  AF4D50E6
+```
+
+Signing with the ed25519 key (`32CC792311A6EF76`) produces a perfectly valid
+signature, `dput` reports success — and Launchpad then discards the upload,
+because it cannot match the signature to a registered key. Nothing appears
+in the PPA and the only notice is an email. That is exactly how the first
+`1.0.0~noble1` attempt was lost.
+
+The signing key's address must also match the `debian/changelog` maintainer
+address; both are `dhivakar1010@gmail.com`.
 
 ```bash
-debuild -S -sa -k32CC792311A6EF76
+debuild -S -sa -k3D8D857AAF4D50E6
 dput dhiva-apps ../branchpilot_1.0.0~noble1_source.changes
 ```
 
+`debuild` needs the key's passphrase. gpg-agent caches it for a while after
+the first use, but in a non-interactive shell with no pinentry available the
+signing step fails with `clear-sign failed: Timeout` — run it from a terminal
+where a passphrase prompt can appear.
+
 `dput` reporting "Successfully uploaded packages" only means the files
-reached the server. Launchpad then validates the signature asynchronously
-and emails an acceptance or rejection. A rejection almost always means the
-signing key is not registered on the Launchpad account, or the account has
-not signed the Code of Conduct.
+reached the server; acceptance is asynchronous. Confirm it actually landed
+rather than trusting that message:
+
+```bash
+curl -s "https://api.launchpad.net/1.0/~dhiva-labs/+archive/ubuntu/apps?ws.op=getPublishedSources&source_name=branchpilot" \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["total_size"], "published")'
+```
 
 Watch progress at
 <https://launchpad.net/~dhiva-labs/+archive/ubuntu/apps/+packages>.

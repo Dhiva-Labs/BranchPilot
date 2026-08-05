@@ -1,11 +1,62 @@
 # Publishing BranchPilot to the Snap Store
 
-## Status
+## Current state
 
-The `branchpilot` name is registered and `1.0.0` has been uploaded. It is
-**held in manual review** because the snap declares classic confinement,
-which is not granted automatically. Until that request is approved the snap
-cannot be released to a channel.
+* The `branchpilot` name is **registered**.
+* **Revision 1** is a *classic*-confinement build. Classic is not granted
+  automatically, so it went into the manual-review queue.
+* **Revision 2** is the *strict*-confinement build (the one to ship). It
+  uploaded, but it **cannot be released while revision 1 sits in review** —
+  the store reports `resource-not-ready: Snap cannot be published due to
+  inconsistent state` for any release attempt.
+
+### To finish publishing
+
+1. Open <https://dashboard.snapcraft.io/snaps/branchpilot/revisions/1/>
+2. Under **Available actions**, click **Reject and remove from review
+   queue**. (Browser automation could not drive this button — the click does
+   not submit and the renderer stops responding, which looks like a
+   JavaScript confirmation dialog it cannot reach. It is a two-second manual
+   click.)
+3. Then release the strict build:
+
+   ```bash
+   snapcraft release branchpilot 2 stable
+   ```
+
+Verify with `snapcraft status branchpilot` — it should stop saying "This snap
+has no released revisions".
+
+## Confinement: why strict, and what it costs
+
+This snap follows the SecureShell Go pattern — `plugin: flutter` plus the
+`gnome` extension under **strict** confinement — because that passes
+automated review and can be released immediately.
+
+Strict confinement genuinely constrains this application, and the limits are
+stated in the snap's description so users meet them before they bite:
+
+* **`~/.gitconfig` is invisible.** The `home` interface exposes non-hidden
+  files only. A repository's nested `.git/` is fine (its parent path is not
+  hidden), but the user's top-level `~/.gitconfig` is not — so git inside the
+  snap sees no `user.name`/`user.email` and no `credential.helper`. Identity
+  must be set per repository.
+* **`~/.ssh` needs a manual connection**: `sudo snap connect
+  branchpilot:ssh-keys`. The interface is not auto-connected.
+* **The ssh-agent socket is unreachable.** It lives under `/run/user/<uid>`
+  and no interface exposes it, so agent-backed auth does not work; keys are
+  read from `~/.ssh` directly via the `ssh-keys` interface.
+* **git ships inside the snap** (`stage-packages: git, openssh-client,
+  ca-certificates, less`), because a confined app cannot execute the host's
+  binary. `GitCli` falls back from `/usr/bin/git` to the first `git` on
+  `PATH`, which resolves to the bundled one.
+
+Classic confinement would remove all four limits and is arguably the correct
+model for a git GUI (`code` and the JetBrains snaps are classic for the same
+reasons). It requires a manual request at
+<https://forum.snapcraft.io/c/store-requests/classic-confinement/26>
+justifying the technical need — the four points above are that
+justification, if it is ever worth pursuing.
 
 ## Building
 
@@ -15,13 +66,12 @@ snapcraft --use-lxd
 
 Produces `branchpilot_1.0.0_amd64.snap` in the repository root.
 
-Two failure modes hit while building this on the original machine, both
-recorded here so they are not rediscovered:
+Two build failures hit on the original machine, recorded so they are not
+rediscovered:
 
 * **`Failed to refresh package list: failed to run apt update`** — a flaky
   Ubuntu mirror fetch inside the freshly launched build container, not a
-  configuration problem. Forcing IPv4 and adding retries inside the
-  instance clears it:
+  configuration problem. Prime the instance and retry:
 
   ```bash
   C=$(lxc --project snapcraft list -c n --format csv | grep branchpilot)
@@ -33,72 +83,16 @@ recorded here so they are not rediscovered:
   ```
 
 * **`Could NOT find PkgConfig`** — the `flutter` plugin fetches the SDK but
-  does not pull in the GTK toolchain the Linux desktop target compiles
-  against. The `build-packages` list in `snap/snapcraft.yaml` covers this.
+  not the GTK toolchain the Linux desktop target compiles against. The
+  `build-packages` list in `snap/snapcraft.yaml` covers this.
 
 ## Uploading
-
-```bash
-snapcraft upload branchpilot_1.0.0_amd64.snap
-```
-
-Once classic confinement is granted, release it:
 
 ```bash
 snapcraft upload --release=stable branchpilot_1.0.0_amd64.snap
 ```
 
-## The classic-confinement request
-
-This has to be posted by a human to the Snap Store forum, under
-<https://forum.snapcraft.io/c/store-requests/classic-confinement/26>. Paste
-the following as the request body.
-
----
-
-**Request: classic confinement for `branchpilot`**
-
-BranchPilot is a graphical git client for the Linux desktop. It deliberately
-implements no git logic of its own and stores no credentials: every operation
-shells out to the user's own `git` binary, and all authentication is left to
-git's existing credential helpers and `ssh-agent`.
-
-That design is incompatible with strict confinement for four separate
-reasons, none of which an interface can resolve:
-
-1. **`~/.gitconfig` is unreachable.** The `home` interface grants access to
-   non-hidden files only. A repository's nested `.git/` directory is
-   reachable because its parent path is not hidden, but the user's top-level
-   `~/.gitconfig` is not. Without it git has no `user.name`/`user.email`, so
-   every commit fails, and no `credential.helper` configuration is visible.
-
-2. **`~/.ssh` is unreachable.** Also a top-level hidden directory. The
-   `ssh-keys` interface can grant it, but it is not auto-connected, so the
-   default install is broken for any SSH remote.
-
-3. **The ssh-agent socket is unreachable.** It lives under
-   `/run/user/<uid>` and no interface exposes it, so agent-backed push and
-   pull fail even with `ssh-keys` connected.
-
-4. **The user's git and its credential helpers are outside the snap.** A
-   credential helper is an arbitrary executable named in the user's git
-   configuration and may live anywhere on `PATH`. Bundling a git binary in
-   the snap would not help: it would be a different git than the one the
-   user configured, and could not invoke their helpers.
-
-This is the same category as the existing classic developer-tool snaps
-(`code`, the JetBrains IDEs), which need equivalent access to the user's
-toolchain and dotfiles.
-
-Source: <https://github.com/Dhiva-Labs/BranchPilot>
-
----
-
-## If classic is declined
-
-The fallback is strict confinement with `ssh-keys` and `network` plugged and
-a documented `snap connect` step, accepting that `~/.gitconfig` stays
-invisible — which means the app must then write repository-local identity
-config itself rather than relying on the user's global settings. That is a
-behavioural change to the application, not just a packaging change, so it
-should be a deliberate decision rather than a quick fallback.
+Uploading a build whose confinement is not yet approved puts it in the review
+queue and **blocks every later upload of the same snap** until that revision
+is rejected or approved. Check `snapcraft revisions branchpilot` before
+assuming an upload is releasable.
