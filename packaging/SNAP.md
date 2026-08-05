@@ -2,30 +2,36 @@
 
 ## Current state
 
-* The `branchpilot` name is **registered**.
-* **Revision 1** is a *classic*-confinement build. Classic is not granted
-  automatically, so it went into the manual-review queue.
-* **Revision 2** is the *strict*-confinement build (the one to ship). It
-  uploaded, but it **cannot be released while revision 1 sits in review** —
-  the store reports `resource-not-ready: Snap cannot be published due to
-  inconsistent state` for any release attempt.
+**Published.** `branchpilot` 1.0.0 (revision 2, strict) is released to the
+`stable` channel:
 
-### To finish publishing
+```sh
+sudo snap install branchpilot
+```
 
-1. Open <https://dashboard.snapcraft.io/snaps/branchpilot/revisions/1/>
-2. Under **Available actions**, click **Reject and remove from review
-   queue**. (Browser automation could not drive this button — the click does
-   not submit and the renderer stops responding, which looks like a
-   JavaScript confirmation dialog it cannot reach. It is a two-second manual
-   click.)
-3. Then release the strict build:
+## A sequencing trap that cost an extra step here
 
-   ```bash
-   snapcraft release branchpilot 2 stable
-   ```
+Revision 1 was a *classic*-confinement build. Classic is never granted
+automatically, so it went into the manual-review queue — and a revision
+sitting in review **blocks every later release of that snap**, not just
+itself. Revision 2 (the strict build that was always the one to ship)
+uploaded fine but every release attempt failed with:
 
-Verify with `snapcraft status branchpilot` — it should stop saying "This snap
-has no released revisions".
+```
+resource-not-ready: Snap cannot be published due to inconsistent state
+```
+
+Clearing it needs a manual click at
+`https://dashboard.snapcraft.io/snaps/branchpilot/revisions/<n>/` →
+**Available actions** → **Reject and remove from review queue**. This
+resisted browser automation: the click does not submit and the renderer
+stops responding, which looks like a JavaScript confirmation dialog the
+automation cannot reach.
+
+**So: do not upload a build whose confinement is not already approved.**
+Check `snapcraft revisions branchpilot` before assuming an upload is
+releasable, and verify with `snapcraft status branchpilot` — "This snap has
+no released revisions" means nothing shipped.
 
 ## Confinement: why strict, and what it costs
 
