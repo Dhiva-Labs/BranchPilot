@@ -70,7 +70,11 @@ justification, if it is ever worth pursuing.
 snapcraft --use-lxd
 ```
 
-Produces `branchpilot_1.0.0_amd64.snap` in the repository root.
+Produces `branchpilot_1.0.0_amd64.snap` in the repository root. Run on an
+arm64 machine it produces `branchpilot_1.0.0_arm64.snap` instead: the
+`architectures:` list in `snap/snapcraft.yaml` builds on each architecture it
+runs on. CI builds both on every push and keeps them as workflow artifacts
+(`snap-amd64` and `snap-arm64`). It never uploads them.
 
 Two build failures hit on the original machine, recorded so they are not
 rediscovered:
@@ -96,6 +100,7 @@ rediscovered:
 
 ```bash
 snapcraft upload --release=stable branchpilot_1.0.0_amd64.snap
+snapcraft upload --release=stable branchpilot_1.0.0_arm64.snap   # the arm64 build
 ```
 
 Uploading a build whose confinement is not yet approved puts it in the review

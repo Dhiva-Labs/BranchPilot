@@ -1,5 +1,8 @@
 # BranchPilot
 
+[![ARM64 builds](https://github.com/Dhiva-Labs/BranchPilot/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Dhiva-Labs/BranchPilot/actions/workflows/ci.yml)
+![Linux x64 | arm64](https://img.shields.io/badge/Linux-x64%20%7C%20arm64-informational?logo=linux&logoColor=white)
+
 A GitKraken-class git GUI for Linux desktop. BranchPilot wraps the system
 `git` command-line tool directly — there is no libgit2, no native git
 bindings, and no bundled git binary. Authentication stays exactly where it
@@ -88,7 +91,8 @@ flutter pub get
 flutter build linux --release
 ```
 
-The built app is at `build/linux/x64/release/bundle/branch_pilot`.
+The built app is at `build/linux/x64/release/bundle/branch_pilot`, or under
+`build/linux/arm64/` when you build on an arm64 machine.
 
 ## Installing
 
@@ -97,6 +101,10 @@ The built app is at `build/linux/x64/release/bundle/branch_pilot`.
 ```sh
 sudo snap install branchpilot
 ```
+
+The Store listing is amd64 until an arm64 build is uploaded. On arm64, install
+the `.deb` below, or build the snap yourself (see
+[packaging/SNAP.md](packaging/SNAP.md)).
 
 The snap is strictly confined, which has two consequences worth knowing
 before you hit them:
@@ -119,8 +127,13 @@ below instead — it is unconfined.
 ### `.deb` (Debian/Ubuntu)
 
 ```sh
-sudo dpkg -i branchpilot_1.0.0_amd64.deb
+sudo dpkg -i branchpilot_1.0.0_amd64.deb      # Intel / AMD (x64)
+sudo dpkg -i branchpilot_1.0.0_arm64.deb      # ARM (arm64)
 ```
+
+Both are attached to the
+[release](https://github.com/Dhiva-Labs/BranchPilot/releases). Pick the one
+that matches `dpkg --print-architecture`.
 
 This installs the app under `/usr/lib/branchpilot`, a thin launcher at
 `/usr/bin/branchpilot`, a `.desktop` entry, and hicolor icons at the
@@ -132,8 +145,11 @@ To build the package yourself from a clean checkout:
 ```sh
 flutter build linux --release
 python3 tool/make_icon.py       # generates assets/icon/branchpilot_<size>.png
-packaging/build_deb.sh          # writes dist/branchpilot_<version>_amd64.deb
+packaging/build_deb.sh          # writes dist/branchpilot_<version>_<arch>.deb
 ```
+
+The package is built for the architecture of the machine it runs on: `amd64`
+on an x64 machine and `arm64` on an arm64 one.
 
 ## Architecture
 
