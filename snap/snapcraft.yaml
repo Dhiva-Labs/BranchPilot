@@ -47,7 +47,8 @@ issues: https://github.com/Dhiva-Labs/BranchPilot/issues
 contact: dhivakar1010@gmail.com
 
 architectures:
-  - build-on: amd64
+  - build-on: [amd64]
+  - build-on: [arm64]
 
 apps:
   branchpilot:
