@@ -24,6 +24,25 @@ builds. See `packaging/vendor/README` for how they are produced.
 dependencies change — a cache built for a different project resolves the
 wrong package set and the builders fail on the first missing package.
 
+## Architectures
+
+The PPA package is amd64 only. `debian/control` says `Architecture: amd64`,
+`debian/rules` copies `build/linux/x64/release/bundle`, and the vendored
+Flutter SDK in `packaging/vendor/` is the Linux x64 one. The GitHub Actions
+workflow already builds an arm64 `.deb` and an arm64 snap; the PPA is the
+part left. To add arm64 here:
+
+* vendor an arm64 Flutter SDK slice (the upstream tarball is x64 only, so
+  clone the 3.44.6 tag on an arm64 machine, run `flutter precache --linux`
+  and slim it as `packaging/vendor/README` describes);
+* use `build/linux/$(DEB_HOST_ARCH_CPU)` style paths in `debian/rules`
+  (`amd64` maps to Flutter's `x64`);
+* set `Architecture: any` in `debian/control`;
+* rehearse offline on an arm64 machine, then upload.
+
+Until then the PPA stays amd64, and arm64 users install the `.deb` from the
+release or the snap.
+
 ## Rehearse offline before every upload
 
 This is the step that catches builder-only failures. It runs the real build

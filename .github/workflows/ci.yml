@@ -1,0 +1,290 @@
+name: CI
+
+# Builds, tests and packages BranchPilot for Linux x64 and Linux arm64.
+#
+# Releases are made by hand and carry the .deb. When a release is published
+# (or this workflow is run by hand with release_tag set), the release job
+# attaches the .deb of every architecture built here, x64 and arm64, and skips
+# any file the release already has, so hand-made assets win.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Existing release to attach the missing .deb files to, for example v1.0.0. Leave empty for a plain CI run.'
+        required: false
+        default: ''
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  FLUTTER_VERSION: '3.44.6'
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  linux:
+    name: Linux ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            deb_arch: amd64
+            runner: ubuntu-24.04
+            elf_machine: x86-64
+          - arch: arm64
+            deb_arch: arm64
+            runner: ubuntu-24.04-arm
+            elf_machine: ARM aarch64
+    env:
+      BUNDLE: build/linux/${{ matrix.arch }}/release/bundle
+      ELF_MACHINE: ${{ matrix.elf_machine }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # git: the unit and integration tests drive the real git CLI.
+      # xvfb, xauth, dbus-x11: the integration tests and the smoke run.
+      # xdotool, imagemagick: the smoke run finds the window and screenshots it.
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang cmake ninja-build pkg-config \
+            libgtk-3-dev liblzma-dev libstdc++-12-dev \
+            git file xvfb xauth xdotool dbus-x11 imagemagick
+
+      # There are no SDK archives for linux-arm64, so clone the release tag.
+      # The x64 leg does the same to keep one code path.
+      - name: Install Flutter ${{ env.FLUTTER_VERSION }}
+        run: |
+          git clone --depth 1 --branch "$FLUTTER_VERSION" \
+            https://github.com/flutter/flutter.git "$RUNNER_TEMP/flutter"
+          echo "$RUNNER_TEMP/flutter/bin" >> "$GITHUB_PATH"
+
+      - name: Configure Flutter
+        run: |
+          uname -m
+          flutter config --no-analytics --enable-linux-desktop
+          flutter precache --linux
+          flutter --version
+          dart --version
+
+      - name: Get packages
+        run: flutter pub get
+
+      - name: Test
+        run: flutter test
+
+      # The full UI flows on the real Linux embedder, under a virtual display.
+      # One flutter invocation per file: a single `flutter test integration_test`
+      # runs the first file and then fails every later launch with "log reader
+      # stopped unexpectedly", on both architectures.
+      - name: UI integration tests
+        run: |
+          cat > "$RUNNER_TEMP/itests.sh" <<'EOF'
+          rc=0
+          for t in integration_test/*_test.dart; do
+            echo "::group::$t"
+            flutter test "$t" -d linux || { echo "::error file=$t::integration test failed"; rc=1; }
+            echo "::endgroup::"
+          done
+          exit $rc
+          EOF
+          xvfb-run -a -s "-screen 0 1280x800x24" bash "$RUNNER_TEMP/itests.sh"
+
+      - name: Build release
+        run: flutter build linux --release
+
+      - name: Assert every ELF file in the bundle is ${{ matrix.elf_machine }}
+        run: |
+          for f in branch_pilot lib/libapp.so lib/libflutter_linux_gtk.so; do
+            [ -f "$BUNDLE/$f" ] || { echo "::error::missing $BUNDLE/$f"; exit 1; }
+          done
+          packaging/assert_arch.sh "$BUNDLE" "$ELF_MACHINE" 3
+
+      - name: Package .deb
+        run: packaging/build_deb.sh dist
+
+      - name: Check the package
+        run: |
+          VERSION="$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d+ -f1)"
+          DEB="dist/branchpilot_${VERSION}_${{ matrix.deb_arch }}.deb"
+          ls -l dist
+          [ "$(ls dist | wc -l)" -eq 1 ]
+          dpkg-deb --info "$DEB"
+          [ "$(dpkg-deb --field "$DEB" Architecture)" = "${{ matrix.deb_arch }}" ]
+          sudo apt-get install -y "./$DEB"
+          packaging/assert_arch.sh /usr/lib/branchpilot "$ELF_MACHINE" 3
+
+      # Runs the release (AOT) build that the .deb installed, so this also
+      # proves the package's Depends resolve on this architecture. The native
+      # GTK runner titles the window "BranchPilot" before any Dart code runs,
+      # so the window alone proves nothing. A Flutter UI paints thousands of
+      # distinct colours (text, icons, shadows); a runner whose Dart snapshot
+      # did not start shows a handful. Count them in a screenshot.
+      - name: Smoke-run the installed app (Xvfb)
+        timeout-minutes: 5
+        run: |
+          cat > "$RUNNER_TEMP/smoke.sh" <<'EOF'
+          log="$RUNNER_TEMP/smoke.log"
+          shot="$RUNNER_TEMP/smoke.png"
+          min_colours=200
+          HOME="$RUNNER_TEMP/smoke-home" branchpilot > "$log" 2>&1 &
+          pid=$!
+          for i in $(seq 1 90); do
+            if xdotool search --name '^BranchPilot$' > /dev/null 2>&1; then
+              echo "BranchPilot window is up after ${i}s"
+              break
+            fi
+            kill -0 "$pid" 2> /dev/null || { echo "branchpilot exited early"; cat "$log"; exit 1; }
+            sleep 1
+          done
+          colours=0
+          for i in $(seq 1 60); do
+            kill -0 "$pid" 2> /dev/null || { echo "branchpilot died"; cat "$log"; exit 1; }
+            import -window root "$shot"
+            colours="$(identify -format %k "$shot")"
+            echo "screenshot ${i}: $colours distinct colours"
+            [ "$colours" -ge "$min_colours" ] && break
+            sleep 1
+          done
+          kill "$pid"
+          cat "$log"
+          if [ "$colours" -lt "$min_colours" ]; then
+            echo "the window never painted a Flutter UI ($colours colours, need $min_colours)"
+            exit 1
+          fi
+          echo "Flutter UI painted: $colours distinct colours"
+          EOF
+          xvfb-run -a -s "-screen 0 1280x800x24" dbus-run-session -- bash "$RUNNER_TEMP/smoke.sh"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: linux-${{ matrix.arch }}
+          path: dist/*.deb
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: smoke-screenshot-${{ matrix.arch }}
+          path: ${{ runner.temp }}/smoke.png
+          if-no-files-found: ignore
+
+  # The snap is built from the same sources by snapcraft in an LXD container.
+  # It is a workflow artifact only: nothing is uploaded to the Snap Store.
+  snap:
+    name: Snap ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+            elf_machine: x86-64
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            elf_machine: ARM aarch64
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: snapcore/action-build@v1
+        id: build
+
+      - name: Assert the snap is ${{ matrix.arch }}
+        env:
+          SNAP_FILE: ${{ steps.build.outputs.snap }}
+          ELF_MACHINE: ${{ matrix.elf_machine }}
+        run: |
+          ls -l "$SNAP_FILE"
+          case "$SNAP_FILE" in
+            *_${{ matrix.arch }}.snap) ;;
+            *) echo "::error::unexpected snap file name $SNAP_FILE"; exit 1 ;;
+          esac
+          command -v unsquashfs > /dev/null || sudo apt-get install -y squashfs-tools
+          unsquashfs -q -d "$RUNNER_TEMP/snap" "$SNAP_FILE"
+          sed -n '/^architectures:/,/^[a-z]/p' "$RUNNER_TEMP/snap/meta/snap.yaml"
+          grep -qx -- '- ${{ matrix.arch }}' "$RUNNER_TEMP/snap/meta/snap.yaml"
+          [ -f "$RUNNER_TEMP/snap/branch_pilot" ]
+          packaging/assert_arch.sh "$RUNNER_TEMP/snap" "$ELF_MACHINE" 20
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: snap-${{ matrix.arch }}
+          path: ${{ steps.build.outputs.snap }}
+          if-no-files-found: error
+
+  # Runs on every event so asset selection is tested on pull requests. Only
+  # the upload step is gated, and this is the only job that can write.
+  release:
+    name: Release assets
+    needs: [linux]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: pubspec.yaml
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: 'linux-*'
+          path: assets
+          merge-multiple: true
+
+      - name: Select the release assets
+        id: select
+        run: |
+          VERSION="$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d+ -f1)"
+          FILES="assets/branchpilot_${VERSION}_amd64.deb assets/branchpilot_${VERSION}_arm64.deb"
+          ls -l assets
+          [ "$(ls assets | wc -l)" -eq 2 ]
+          ls -l $FILES
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "files=$FILES" >> "$GITHUB_OUTPUT"
+
+      # Files the release already has are left alone; nothing is overwritten.
+      - name: Upload to release ${{ github.event.release.tag_name || inputs.release_tag }}
+        if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name || inputs.release_tag }}
+          VERSION: ${{ steps.select.outputs.version }}
+          FILES: ${{ steps.select.outputs.files }}
+        run: |
+          if [ "$TAG" != "v$VERSION" ]; then
+            echo "::error::release tag $TAG does not match pubspec.yaml version $VERSION"
+            exit 1
+          fi
+          existing="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')"
+          new=()
+          for f in $FILES; do
+            if grep -qxF "$(basename "$f")" <<< "$existing"; then
+              echo "skip $(basename "$f"): already on $TAG"
+            else
+              new+=("$f")
+            fi
+          done
+          if [ "${#new[@]}" -gt 0 ]; then
+            gh release upload "$TAG" "${new[@]}" --repo "$GITHUB_REPOSITORY"
+          fi
