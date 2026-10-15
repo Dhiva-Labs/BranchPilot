@@ -127,8 +127,8 @@ below instead — it is unconfined.
 ### `.deb` (Debian/Ubuntu)
 
 ```sh
-sudo dpkg -i branchpilot_1.0.0_amd64.deb      # Intel / AMD (x64)
-sudo dpkg -i branchpilot_1.0.0_arm64.deb      # ARM (arm64)
+sudo dpkg -i branchpilot_1.0.1_amd64.deb      # Intel / AMD (x64)
+sudo dpkg -i branchpilot_1.0.1_arm64.deb      # ARM (arm64)
 ```
 
 Both are attached to the

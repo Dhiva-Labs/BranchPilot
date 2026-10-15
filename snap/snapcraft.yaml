@@ -9,7 +9,7 @@
 name: branchpilot
 title: BranchPilot
 base: core22
-version: '1.0.0'
+version: '1.0.1'
 summary: Git GUI for Linux with a visual commit graph and hunk-level staging
 description: |
   BranchPilot is a git client for the Linux desktop: a visual commit graph,
