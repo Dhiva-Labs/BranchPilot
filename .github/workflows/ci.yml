@@ -186,8 +186,10 @@ jobs:
           path: ${{ runner.temp }}/smoke.png
           if-no-files-found: ignore
 
-  # The snap is built from the same sources by snapcraft in an LXD container.
-  # It is a workflow artifact only: nothing is uploaded to the Snap Store.
+  # The snap is built from the same sources by snapcraft in an LXD container,
+  # then installed and started under confinement on the runner's own
+  # architecture. It is a workflow artifact only: nothing is uploaded to the
+  # Snap Store.
   snap:
     name: Snap ${{ matrix.arch }}
     runs-on: ${{ matrix.runner }}
@@ -224,6 +226,77 @@ jobs:
           grep -qx -- '- ${{ matrix.arch }}' "$RUNNER_TEMP/snap/meta/snap.yaml"
           [ -f "$RUNNER_TEMP/snap/branch_pilot" ]
           packaging/assert_arch.sh "$RUNNER_TEMP/snap" "$ELF_MACHINE" 20
+
+      # The snap is strictly confined, so a bundle that looks right can still
+      # fail to start (missing library, denied access). Install the snap that
+      # was just built and run it under snapd's confinement on this
+      # architecture. `snap install --dangerous` pulls the gnome-42-2204
+      # content snap and connects the display and graphics plugs by itself.
+      # -ac: a confined snap cannot read xvfb-run's X authority file.
+      # The GTK runner titles the window before any Dart code runs, so the
+      # window alone proves nothing; count the colours in a screenshot, as the
+      # .deb smoke run does (a Flutter UI paints thousands, a dead one a few).
+      - name: Install the snap and run it confined (Xvfb)
+        timeout-minutes: 15
+        env:
+          SNAP_FILE: ${{ steps.build.outputs.snap }}
+        run: |
+          sudo apt-get install -y xvfb xauth xdotool imagemagick
+          sudo snap install --dangerous "$SNAP_FILE"
+          snap list
+          snap connections branchpilot
+          # The bundled git has to run inside the confinement: BranchPilot
+          # drives every operation through it.
+          snap run --shell branchpilot -c '
+            set -e
+            git --version
+            d="$SNAP_USER_DATA/git-check"
+            rm -rf "$d"; mkdir -p "$d"; cd "$d"
+            git init -q .
+            echo hello > a.txt
+            git add a.txt
+            git -c user.name=ci -c user.email=ci@example.invalid commit -q -m check
+            git log --oneline
+          '
+          cat > "$RUNNER_TEMP/snap-smoke.sh" <<'EOF'
+          log="$RUNNER_TEMP/snap-smoke.log"
+          shot="$RUNNER_TEMP/snap-smoke.png"
+          min_colours=200
+          snap run branchpilot > "$log" 2>&1 &
+          pid=$!
+          for i in $(seq 1 120); do
+            if xdotool search --onlyvisible --name '^BranchPilot$' > /dev/null 2>&1; then
+              echo "BranchPilot window is up after ${i}s"
+              break
+            fi
+            kill -0 "$pid" 2> /dev/null || { echo "branchpilot exited early"; cat "$log"; exit 1; }
+            sleep 1
+          done
+          colours=0
+          for i in $(seq 1 60); do
+            kill -0 "$pid" 2> /dev/null || { echo "branchpilot died"; cat "$log"; exit 1; }
+            import -window root "$shot"
+            colours="$(identify -format %k "$shot")"
+            echo "screenshot ${i}: $colours distinct colours"
+            [ "$colours" -ge "$min_colours" ] && break
+            sleep 1
+          done
+          kill "$pid"
+          cat "$log"
+          if [ "$colours" -lt "$min_colours" ]; then
+            echo "the confined snap never painted a Flutter UI ($colours colours, need $min_colours)"
+            exit 1
+          fi
+          echo "Flutter UI painted in the confined snap: $colours distinct colours"
+          EOF
+          xvfb-run -a -s "-screen 0 1280x800x24 -ac" bash "$RUNNER_TEMP/snap-smoke.sh"
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: snap-smoke-screenshot-${{ matrix.arch }}
+          path: ${{ runner.temp }}/snap-smoke.png
+          if-no-files-found: ignore
 
       - uses: actions/upload-artifact@v7
         with:
