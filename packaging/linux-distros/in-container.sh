@@ -18,8 +18,8 @@ case "$MODE" in
     ;;
   rpm-suse)
     zypper -n -q --gpg-auto-import-keys refresh
-    zypper -n -q install file findutils which procps \
-      xvfb-run Mesa-dri dbus-1 python3 dejavu-fonts
+    zypper -n -q install file findutils which procps gawk \
+      xvfb-run /usr/bin/dbus-run-session Mesa-dri dbus-1 python3 dejavu-fonts
     ;;
   pacman)
     pacman -Syu --noconfirm --needed -q file findutils which procps-ng \
@@ -36,8 +36,9 @@ case "$MODE" in
   rpm-suse) zypper -n install --allow-unsigned-rpm "$FILE"; files() { rpm -ql "$NAME"; } ;;
   pacman)   pacman -U --noconfirm "$FILE"; files() { pacman -Qlq "$NAME"; } ;;
   appimage)
-    # The libraries an AppImage expects from the host: GTK 3 and friends.
-    dnf -y -q install gtk3 git
+    # The libraries an AppImage expects from the host: GTK 3 and the EGL
+    # and GLES libraries Flutter's engine opens at run time.
+    dnf -y -q install gtk3 libglvnd-egl libglvnd-gles git
     cp "$FILE" /tmp/app.AppImage
     chmod +x /tmp/app.AppImage
     (cd /tmp && /tmp/app.AppImage --appimage-extract > /dev/null)
