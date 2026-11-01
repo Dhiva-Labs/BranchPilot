@@ -65,3 +65,6 @@ PLAN.md
 /parts/
 /prime/
 /stage/
+
+# Installed tree the Flatpak job unpacks from the .deb
+/packaging/flatpak/tree/

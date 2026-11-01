@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.dhivalabs.branch_pilot</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>BranchPilot</name>
+  <summary>Git GUI with a visual commit graph and hunk-level staging</summary>
+  <description>
+    <p>BranchPilot is a desktop git client built around the git command-line
+      tool: no libgit2 and no native git bindings. It never handles or stores
+      credentials; git does that, with your ssh-agent and git configuration.</p>
+    <p>It shows a lane-based commit graph with colour-coded branch, tag and
+      remote decorations, hunk-level diff staging with syntax highlighting, a
+      commit and amend box, branch and stash management, merge conflict
+      resolution, fetch, pull and push with live progress, a visual
+      interactive rebase with conflict pause and resume, tags, cherry-pick,
+      revert, a confirmation-gated hard reset, worktrees and per-file
+      history.</p>
+    <p>The Flatpak carries its own git, which runs inside the sandbox and
+      reads your ~/.gitconfig and ~/.config/git.</p>
+  </description>
+  <launchable type="desktop-id">com.dhivalabs.branch_pilot.desktop</launchable>
+  <url type="homepage">https://github.com/Dhiva-Labs/BranchPilot</url>
+  <url type="bugtracker">https://github.com/Dhiva-Labs/BranchPilot/issues</url>
+  <developer id="com.dhivalabs">
+    <name>Dhiva Labs</name>
+  </developer>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="1.0.0" date="2026-08-05"/>
+  </releases>
+</component>

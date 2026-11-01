@@ -1,0 +1,87 @@
+# Flatpak manifest for BranchPilot.
+#
+# Like the .rpm, Arch package and AppImage, this repackages the installed
+# tree of the .deb that CI builds (unpacked into packaging/flatpak/tree/ by
+# the workflow), so the Flatpak ships the same binary as every other format
+# instead of a second build inside the sandbox. A Flathub submission needs
+# `tree` swapped for an archive source (release URL + sha256); see README.md
+# in this directory.
+#
+# BranchPilot does all of its work by running git. The runtime has no git,
+# so git is built here from the upstream release and runs inside the
+# sandbox; the app finds it as the first `git` on PATH (/app/bin/git).
+id: com.dhivalabs.branch_pilot
+runtime: org.gnome.Platform
+runtime-version: '51'
+sdk: org.gnome.Sdk
+command: branchpilot
+finish-args:
+  # GTK needs a display socket; fallback-x11 covers X11-only desktops.
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  # GPU acceleration for Flutter's renderer.
+  - --device=dri
+  # fetch, pull, push and clone talk to remotes over HTTPS and SSH.
+  - --share=network
+  # A git GUI opens repositories wherever they are, by path, and git reads
+  # ~/.gitconfig, ~/.config/git and ~/.ssh (keys, known_hosts) from there,
+  # as it does on the host.
+  - --filesystem=home
+  # SSH remotes authenticate with the keys in the user's ssh-agent.
+  - --socket=ssh-auth
+modules:
+  - name: git
+    # Its own prefix, so /app/bin/git can be the wrapper below.
+    build-options:
+      prefix: /app/git
+    # No gitk/git-gui (Tcl/Tk) and none of the Perl or Python commands
+    # (send-email, svn, p4): BranchPilot runs none of them.
+    make-args:
+      - NO_TCLTK=YesPlease
+      - NO_PERL=YesPlease
+      - NO_PYTHON=YesPlease
+      - INSTALL_SYMLINKS=YesPlease
+    make-install-args:
+      - NO_TCLTK=YesPlease
+      - NO_PERL=YesPlease
+      - NO_PYTHON=YesPlease
+      - INSTALL_SYMLINKS=YesPlease
+    cleanup:
+      - /git/share/gitweb
+      - /git/share/man
+    sources:
+      - type: archive
+        url: https://www.kernel.org/pub/software/scm/git/git-2.56.0.tar.xz
+        sha256: 26c56c296b38c0695b26fa95f475f1d01704d2d38e73465ca30b0b2f5dc789d3
+
+  # Flatpak points XDG_CONFIG_HOME at ~/.var/app/<id>/config, which would
+  # hide the user's ~/.config/git (config, global ignore and attributes
+  # files) from git. The wrapper points git back at the host's directory.
+  - name: git-wrapper
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 git-wrapper.sh /app/bin/git
+    sources:
+      - type: script
+        dest-filename: git-wrapper.sh
+        commands:
+          - export XDG_CONFIG_HOME="${HOST_XDG_CONFIG_HOME:-$HOME/.config}"
+          - exec /app/git/bin/git "$@"
+
+  - name: branchpilot
+    buildsystem: simple
+    sources:
+      - type: dir
+        path: tree
+        dest: tree
+      - type: file
+        path: com.dhivalabs.branch_pilot.metainfo.xml
+    build-commands:
+      # Flutter finds lib/ and data/ next to its executable.
+      - install -d /app/lib && cp -a tree/usr/lib/branchpilot /app/lib/branchpilot
+      - install -d /app/bin && ln -s ../lib/branchpilot/branch_pilot /app/bin/branchpilot
+      - install -Dm644 tree/usr/share/applications/branchpilot.desktop /app/share/applications/com.dhivalabs.branch_pilot.desktop
+      - desktop-file-edit --set-icon=com.dhivalabs.branch_pilot /app/share/applications/com.dhivalabs.branch_pilot.desktop
+      - for s in 16 32 48 64 128 256 512; do install -Dm644 tree/usr/share/icons/hicolor/${s}x${s}/apps/branchpilot.png /app/share/icons/hicolor/${s}x${s}/apps/com.dhivalabs.branch_pilot.png; done
+      - install -Dm644 com.dhivalabs.branch_pilot.metainfo.xml /app/share/metainfo/com.dhivalabs.branch_pilot.metainfo.xml
