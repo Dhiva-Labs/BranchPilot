@@ -26,7 +26,8 @@ The manifest has three modules:
 - **branchpilot**, the installed tree, with the desktop file and icons renamed
   to the app ID and the AppStream metadata.
 
-CI then installs the bundle and checks, inside the sandbox, that the runtime
+The `flatpak-run` job then installs the bundle on a plain Ubuntu runner, the
+way a user would (runtime from Flathub), and checks, inside the sandbox, that the runtime
 has no `/usr/bin/git`, that `git` resolves to the bundled one, that it can
 `ls-remote` an HTTPS remote and that it reads `~/.config/git/config`. Last, it
 starts the app on a fresh repository under Xvfb with

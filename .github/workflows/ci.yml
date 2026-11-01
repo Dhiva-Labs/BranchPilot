@@ -291,12 +291,9 @@ jobs:
           path: dist/*-aur.tar.gz
           if-no-files-found: error
 
-  # The Flatpak, built from the same installed tree. The GNOME runtime has no
-  # git, so the manifest builds git into the bundle; the app finds it first
-  # on PATH. The bundle is then installed in the builder image and checked:
-  # every library must resolve inside the sandbox, the app must get that
-  # git, git must reach an HTTPS remote and read the host's ~/.config/git,
-  # and smoke.sh must pass on the sandboxed app.
+  # The Flatpak, built from the same installed tree in the Flathub builder
+  # image. The GNOME runtime has no git, so the manifest builds git into the
+  # bundle; the app finds it first on PATH. The next job tests the bundle.
   flatpak:
     name: Flatpak ${{ matrix.arch }}
     needs: [distros]
@@ -314,8 +311,6 @@ jobs:
         include:
           - { arch: x64, fp_arch: x86_64, runner: ubuntu-24.04 }
           - { arch: arm64, fp_arch: aarch64, runner: ubuntu-24.04-arm }
-    env:
-      APP_ID: com.dhivalabs.branch_pilot
     steps:
       - uses: actions/checkout@v7
 
@@ -341,12 +336,51 @@ jobs:
           cache: false
           artifact-name: flatpak-${{ matrix.arch }}
 
-      - name: Install the bundle and check git inside the sandbox
-        env:
-          BUNDLE: ${{ steps.v.outputs.bundle }}
+  # Installs the bundle the way a user would (runtime from Flathub) on an
+  # Ubuntu runner and checks it: every library must resolve inside the
+  # sandbox, the app must get the bundled git, git must reach an HTTPS remote
+  # and read the host's ~/.config/git, and smoke.sh must pass on the
+  # sandboxed app. Not in the builder image: GTK finds no GL implementation
+  # under its Xvfb, so Flutter never paints there.
+  flatpak-run:
+    name: Flatpak on Ubuntu ${{ matrix.arch }}
+    needs: [flatpak]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: x64, fp_arch: x86_64, runner: ubuntu-24.04 }
+          - { arch: arm64, fp_arch: aarch64, runner: ubuntu-24.04-arm }
+    env:
+      APP_ID: com.dhivalabs.branch_pilot
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: flatpak-${{ matrix.arch }}
+          path: bundle
+
+      # xvfb, xauth, dbus-x11: the smoke run. A fresh home directory, as on
+      # a new desktop: smoke.sh searches it for the app's preferences.
+      - name: Install Flatpak and a display
         run: |
-          flatpak install --user -y --noninteractive "$BUNDLE"
+          sudo apt-get update
+          sudo apt-get install -y flatpak xvfb xauth dbus-x11
+          mkdir -p "$RUNNER_TEMP/home"
+          echo "HOME=$RUNNER_TEMP/home" >> "$GITHUB_ENV"
+
+      - name: Install the bundle with its runtime from Flathub
+        run: |
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          VERSION="$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d+ -f1)"
+          flatpak install --user -y --noninteractive "bundle/branchpilot-$VERSION-${{ matrix.fp_arch }}.flatpak"
           flatpak info --user --show-permissions "$APP_ID"
+
+      - name: Check git inside the sandbox
+        run: |
           flatpak run --command=sh "$APP_ID" -s < packaging/flatpak/ldd-check.sh
           # GitCli runs /usr/bin/git when it exists and the first git on PATH
           # otherwise. The runtime must have none, so the app gets the git
@@ -370,9 +404,13 @@ jobs:
       - name: Run the sandboxed app (Xvfb)
         timeout-minutes: 5
         run: |
-          export XDG_RUNTIME_DIR="$RUNNER_TEMP/xdg-runtime" SMOKE_FB="$RUNNER_TEMP/fb"
-          mkdir -p -m 0700 "$XDG_RUNTIME_DIR"
+          export SMOKE_FB="$RUNNER_TEMP/fb"
           mkdir -p "$SMOKE_FB"
+          # The runner has no login session, so no XDG_RUNTIME_DIR.
+          if [ -z "${XDG_RUNTIME_DIR:-}" ]; then
+            export XDG_RUNTIME_DIR="$RUNNER_TEMP/xdg-runtime"
+            mkdir -p -m 0700 "$XDG_RUNTIME_DIR"
+          fi
           # smoke.sh makes its repository with the sandbox's git, too.
           export GIT="flatpak run --command=git $APP_ID"
           xvfb-run -a -s "-screen 0 1280x800x24 -fbdir $SMOKE_FB" \
@@ -427,7 +465,7 @@ jobs:
   # the upload step is gated, and this is the only job that can write.
   release:
     name: Release assets
-    needs: [linux, distros, aur, flatpak]
+    needs: [linux, distros, aur, flatpak-run]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
