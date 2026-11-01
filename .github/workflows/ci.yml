@@ -364,13 +364,16 @@ jobs:
           path: bundle
 
       # xvfb, xauth, dbus-x11: the smoke run. A fresh home directory, as on
-      # a new desktop: smoke.sh searches it for the app's preferences.
+      # a new desktop: smoke.sh searches it for the app's preferences. The
+      # runner exports XDG_CONFIG_HOME=/home/runner/.config, and flatpak
+      # hands that to the sandbox as HOST_XDG_CONFIG_HOME, so it moves too.
       - name: Install Flatpak and a display
         run: |
           sudo apt-get update
           sudo apt-get install -y flatpak xvfb xauth dbus-x11
-          mkdir -p "$RUNNER_TEMP/home"
+          mkdir -p "$RUNNER_TEMP/home/.config"
           echo "HOME=$RUNNER_TEMP/home" >> "$GITHUB_ENV"
+          echo "XDG_CONFIG_HOME=$RUNNER_TEMP/home/.config" >> "$GITHUB_ENV"
 
       - name: Install the bundle with its runtime from Flathub
         run: |
@@ -395,8 +398,8 @@ jobs:
           # Network, CA certificates and git-remote-https inside the sandbox.
           flatpak run --command=git "$APP_ID" ls-remote "https://github.com/$GITHUB_REPOSITORY.git" HEAD
           # The wrapper makes git read the host's ~/.config/git.
-          mkdir -p "$HOME/.config/git"
-          printf '[smoke]\n\tmarker = host-config\n' > "$HOME/.config/git/config"
+          mkdir -p "$XDG_CONFIG_HOME/git"
+          printf '[smoke]\n\tmarker = host-config\n' > "$XDG_CONFIG_HOME/git/config"
           marker="$(flatpak run --command=git "$APP_ID" config --global smoke.marker)"
           echo "git in the sandbox read smoke.marker = $marker from ~/.config/git/config"
           [ "$marker" = host-config ]
