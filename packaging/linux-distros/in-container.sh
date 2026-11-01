@@ -19,7 +19,7 @@ case "$MODE" in
   rpm-suse)
     zypper -n -q --gpg-auto-import-keys refresh
     zypper -n -q install file findutils which procps gawk \
-      xvfb-run /usr/bin/dbus-run-session Mesa-dri dbus-1 python3 dejavu-fonts
+      xvfb-run dbus-1-daemon Mesa-dri python3 dejavu-fonts
     ;;
   pacman)
     pacman -Syu --noconfirm --needed -q file findutils which procps-ng \
