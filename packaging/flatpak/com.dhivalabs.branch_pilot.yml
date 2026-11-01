@@ -36,13 +36,17 @@ modules:
     build-options:
       prefix: /app/git
     # No gitk/git-gui (Tcl/Tk) and none of the Perl or Python commands
-    # (send-email, svn, p4): BranchPilot runs none of them.
+    # (send-email, svn, p4): BranchPilot runs none of them. Git 2.56 builds
+    # parts of itself in Rust by default and the GNOME SDK has no cargo;
+    # NO_RUST keeps the C implementations.
     make-args:
+      - NO_RUST=YesPlease
       - NO_TCLTK=YesPlease
       - NO_PERL=YesPlease
       - NO_PYTHON=YesPlease
       - INSTALL_SYMLINKS=YesPlease
     make-install-args:
+      - NO_RUST=YesPlease
       - NO_TCLTK=YesPlease
       - NO_PERL=YesPlease
       - NO_PYTHON=YesPlease
