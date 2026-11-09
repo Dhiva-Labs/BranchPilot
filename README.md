@@ -12,6 +12,8 @@ already lives: your system's git credential helpers and `ssh-agent`. The app
 never sees, stores, or asks for a password — it just shells out to `git` the
 same way a terminal would.
 
+**Documentation:** step-by-step guides at [learn.dhivalabs.com](https://learn.dhivalabs.com/apps/branchpilot/): [install](https://learn.dhivalabs.com/apps/branchpilot/install) · [beginner guide](https://learn.dhivalabs.com/apps/branchpilot/getting-started) · [troubleshooting](https://learn.dhivalabs.com/apps/branchpilot/faq). New to the topic? Try the [Git and version control](https://learn.dhivalabs.com/tracks/git/) learning track.
+
 Built with Flutter (Linux desktop target) and Riverpod for state management.
 
 ## Screenshots
