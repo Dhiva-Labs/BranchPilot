@@ -41,7 +41,9 @@ grade: stable
 confinement: strict
 icon: snap/gui/branchpilot.png
 license: MIT
-website: https://github.com/Dhiva-Labs/BranchPilot
+website:
+  - https://github.com/Dhiva-Labs/BranchPilot
+  - https://learn.dhivalabs.com/apps/branchpilot/
 source-code: https://github.com/Dhiva-Labs/BranchPilot
 issues: https://github.com/Dhiva-Labs/BranchPilot/issues
 contact: dhivakar1010@gmail.com
