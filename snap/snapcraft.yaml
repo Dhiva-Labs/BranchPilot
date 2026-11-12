@@ -9,7 +9,7 @@
 name: branchpilot
 title: BranchPilot
 base: core22
-version: '1.0.0'
+version: '1.0.1'
 summary: Git GUI for Linux with a visual commit graph and hunk-level staging
 description: |
   BranchPilot is a git client for the Linux desktop: a visual commit graph,
@@ -55,6 +55,11 @@ architectures:
 apps:
   branchpilot:
     command: branch_pilot
+    environment:
+      # The confinement denies /etc/gitconfig, and git treats an unreadable
+      # system config as fatal, so every git command would fail on a machine
+      # that has one. Skip the system file; per-repo config still applies.
+      GIT_CONFIG_NOSYSTEM: "1"
     # The `gnome` extension is the core22 replacement for separate
     # desktop/gtk plumbing: it supplies the GTK3/GLib/Wayland/X11 platform
     # via a content snap, the `desktop-launch` command-chain wrapper, and

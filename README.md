@@ -131,8 +131,8 @@ below instead — it is unconfined.
 ### `.deb` (Debian/Ubuntu)
 
 ```sh
-sudo dpkg -i branchpilot_1.0.0_amd64.deb      # Intel / AMD (x64)
-sudo dpkg -i branchpilot_1.0.0_arm64.deb      # ARM (arm64)
+sudo dpkg -i branchpilot_1.0.1_amd64.deb      # Intel / AMD (x64)
+sudo dpkg -i branchpilot_1.0.1_arm64.deb      # ARM (arm64)
 ```
 
 Both are attached to the
@@ -168,20 +168,20 @@ that is too old instead of installing an app that cannot start.
 **Fedora, RHEL, Rocky, Alma** (`.rpm`; dnf installs git and GTK 3 with it):
 
 ```sh
-sudo dnf install ./branchpilot-1.0.0-1.x86_64.rpm      # or .aarch64.rpm
+sudo dnf install ./branchpilot-1.0.1-1.x86_64.rpm      # or .aarch64.rpm
 ```
 
 **openSUSE Tumbleweed** (the same `.rpm`; it is not signed):
 
 ```sh
-sudo zypper install --allow-unsigned-rpm ./branchpilot-1.0.0-1.x86_64.rpm
+sudo zypper install --allow-unsigned-rpm ./branchpilot-1.0.1-1.x86_64.rpm
 ```
 
 **Arch Linux, Manjaro, EndeavourOS** (`.pkg.tar.zst`; depends on `gtk3` and
 `git`):
 
 ```sh
-sudo pacman -U ./branchpilot-1.0.0-1-x86_64.pkg.tar.zst  # or -aarch64
+sudo pacman -U ./branchpilot-1.0.1-1-x86_64.pkg.tar.zst  # or -aarch64
 ```
 
 Each release also carries `branchpilot-bin-<version>-aur.tar.gz`, the
@@ -192,15 +192,15 @@ release `.deb`. It is not on the AUR yet.
 `git`, so install git first):
 
 ```sh
-chmod +x BranchPilot-1.0.0-x86_64.AppImage                # or -aarch64
-./BranchPilot-1.0.0-x86_64.AppImage
+chmod +x BranchPilot-1.0.1-x86_64.AppImage                # or -aarch64
+./BranchPilot-1.0.1-x86_64.AppImage
 ```
 
 **Flatpak** (the GNOME 51 runtime comes from Flathub):
 
 ```sh
 flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-flatpak install --user ./branchpilot-1.0.0-x86_64.flatpak # or -aarch64
+flatpak install --user ./branchpilot-1.0.1-x86_64.flatpak # or -aarch64
 flatpak run com.dhivalabs.branch_pilot
 ```
 
