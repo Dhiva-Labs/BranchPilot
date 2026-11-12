@@ -2,13 +2,17 @@
 
 [![ARM64 builds](https://github.com/Dhiva-Labs/BranchPilot/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Dhiva-Labs/BranchPilot/actions/workflows/ci.yml)
 ![Linux x64 | arm64](https://img.shields.io/badge/Linux-x64%20%7C%20arm64-informational?logo=linux&logoColor=white)
+![Linux: deb | rpm | Arch | AppImage | Flatpak | Snap](https://img.shields.io/badge/Linux-deb%20%7C%20rpm%20%7C%20Arch%20%7C%20AppImage%20%7C%20Flatpak%20%7C%20Snap-informational?logo=linux&logoColor=white)
 
 A GitKraken-class git GUI for Linux desktop. BranchPilot wraps the system
 `git` command-line tool directly — there is no libgit2, no native git
-bindings, and no bundled git binary. Authentication stays exactly where it
+bindings, and no bundled git binary (except in the Flatpak, whose sandbox
+cannot run the system's git). Authentication stays exactly where it
 already lives: your system's git credential helpers and `ssh-agent`. The app
 never sees, stores, or asks for a password — it just shells out to `git` the
 same way a terminal would.
+
+**Documentation:** step-by-step guides at [learn.dhivalabs.com](https://learn.dhivalabs.com/apps/branchpilot/): [install](https://learn.dhivalabs.com/apps/branchpilot/install) · [beginner guide](https://learn.dhivalabs.com/apps/branchpilot/getting-started) · [troubleshooting](https://learn.dhivalabs.com/apps/branchpilot/faq). New to the topic? Try the [Git and version control](https://learn.dhivalabs.com/tracks/git/) learning track.
 
 Built with Flutter (Linux desktop target) and Riverpod for state management.
 
@@ -151,6 +155,62 @@ packaging/build_deb.sh          # writes dist/branchpilot_<version>_<arch>.deb
 The package is built for the architecture of the machine it runs on: `amd64`
 on an x64 machine and `arm64` on an arm64 one.
 
+### Other distributions
+
+CI builds these from the same release build as the `.deb`, for x64
+(`x86_64`) and arm64 (`aarch64`), and attaches them to releases from the next
+release on. They are built on Ubuntu 24.04, so they need a distribution at
+least that new (glibc 2.39): Fedora 40 or later, RHEL/Rocky/Alma 10, openSUSE
+Tumbleweed, current Arch Linux. openSUSE Leap 15 and RHEL 9 are too old. The
+`.rpm` declares the glibc version it needs, so dnf and zypper refuse a system
+that is too old instead of installing an app that cannot start.
+
+**Fedora, RHEL, Rocky, Alma** (`.rpm`; dnf installs git and GTK 3 with it):
+
+```sh
+sudo dnf install ./branchpilot-1.0.1-1.x86_64.rpm      # or .aarch64.rpm
+```
+
+**openSUSE Tumbleweed** (the same `.rpm`; it is not signed):
+
+```sh
+sudo zypper install --allow-unsigned-rpm ./branchpilot-1.0.1-1.x86_64.rpm
+```
+
+**Arch Linux, Manjaro, EndeavourOS** (`.pkg.tar.zst`; depends on `gtk3` and
+`git`):
+
+```sh
+sudo pacman -U ./branchpilot-1.0.1-1-x86_64.pkg.tar.zst  # or -aarch64
+```
+
+Each release also carries `branchpilot-bin-<version>-aur.tar.gz`, the
+PKGBUILD and `.SRCINFO` of an AUR `branchpilot-bin` package that repackages the
+release `.deb`. It is not on the AUR yet.
+
+**AppImage** (any glibc distribution with GTK 3; it runs your system's
+`git`, so install git first):
+
+```sh
+chmod +x BranchPilot-1.0.1-x86_64.AppImage                # or -aarch64
+./BranchPilot-1.0.1-x86_64.AppImage
+```
+
+**Flatpak** (the GNOME 51 runtime comes from Flathub):
+
+```sh
+flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+flatpak install --user ./branchpilot-1.0.1-x86_64.flatpak # or -aarch64
+flatpak run com.dhivalabs.branch_pilot
+```
+
+The Flatpak runs sandboxed with its own git (built from the upstream
+release), access to your home directory, the network and your ssh-agent.
+That git reads `~/.gitconfig` and `~/.config/git`, but credential helpers
+installed on the host are not inside the sandbox, and repositories outside
+your home directory are not visible to it. See
+[packaging/flatpak/README.md](packaging/flatpak/README.md).
+
 ## Architecture
 
 Every git invocation goes through a single chokepoint, `lib/git/git_cli.dart`
@@ -167,4 +227,18 @@ no separate cache-invalidation layer to keep in sync by hand.
 
 There is no libgit2, no git2dart, and no vendored git binary: BranchPilot is
 purely a UI and orchestration layer over whatever `git` is already installed
-on the system.
+on the system. The Flatpak is the one exception: a sandboxed app
+cannot run the host's git, so the bundle carries git built from the upstream
+release.
+
+## Sponsors
+
+Dhiva Labs is an independent, self-funded lab. [Sponsorships](https://github.com/sponsors/Dhiva-Labs) help bring this project and the rest of Dhiva Labs to every platform, iPhone and Mac included.
+
+[![Sponsor Dhiva Labs](https://img.shields.io/badge/Sponsor-Dhiva%20Labs-ea4aaa?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/Dhiva-Labs)
+
+Monthly sponsors at $10 and up are listed here:
+
+<!-- sponsors -->
+*Be the first: [sponsor Dhiva Labs](https://github.com/sponsors/Dhiva-Labs).*
+<!-- sponsors -->
